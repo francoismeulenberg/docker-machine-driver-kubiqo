@@ -24,7 +24,7 @@ import (
 	"github.com/exoscale/egoscale/v3/credentials"
 )
 
-// Driver is the struct compatible with github.com/rancher/machine/libmachine/drivers.Driver interface
+// Driver is the struct compatible with github.com/docker/machine/libmachine/drivers.Driver interface
 type Driver struct {
 	*drivers.BaseDriver
 	URL              string
@@ -35,6 +35,7 @@ type Driver struct {
 	Image            string
 	SecurityGroups   []string
 	AffinityGroups   []string
+	PrivateNetworks  []string
 	AvailabilityZone string
 	SSHKey           string
 	KeyPair          string
@@ -129,6 +130,12 @@ func (d *Driver) GetCreateFlags() []mcnflag.Flag {
 			Value:  []string{},
 			Usage:  "exoscale affinity group",
 		},
+		mcnflag.StringSliceFlag{
+			EnvVar: "EXOSCALE_PRIVATE_NETWORK",
+			Name:   "exoscale-private-network",
+			Value:  []string{},
+			Usage:  "exoscale private network",
+		},
 	}
 }
 
@@ -182,7 +189,7 @@ func (d *Driver) GetSSHUsername() string {
 
 // DriverName returns the name of the driver
 func (d *Driver) DriverName() string {
-	return "exoscale"
+	return "kubiqo"
 }
 
 // UnmarshalJSON loads driver config from JSON. This function is used by the RPCServerDriver that wraps
@@ -233,6 +240,7 @@ func (d *Driver) SetConfigFromFlags(flags drivers.DriverOptions) error {
 	d.Image = flags.String("exoscale-image")
 	d.SecurityGroups = flags.StringSlice("exoscale-security-group")
 	d.AffinityGroups = flags.StringSlice("exoscale-affinity-group")
+	d.PrivateNetworks = flags.StringSlice("exoscale-private-network")
 	d.AvailabilityZone = flags.String("exoscale-availability-zone")
 	d.SSHUser = flags.String("exoscale-ssh-user")
 	d.SSHKey = flags.String("exoscale-ssh-key")

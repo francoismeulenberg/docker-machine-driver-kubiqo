@@ -6,18 +6,19 @@ toolchain go1.24.7
 
 replace github.com/urfave/cli => github.com/urfave/cli v1.11.1-0.20151120215642-0302d3914d2a // newer versions of this will break the rpc binding code
 
-// docker/machine depends on the legacy term package that was removed in newer docker releases.
+// Pin docker/docker to a version that still provides pkg/term, required by rancher/machine ssh.
 replace github.com/docker/docker => github.com/docker/docker v20.10.7+incompatible
 
+// Use rancher fork for docker/machine implementation while keeping import paths consistent.
+replace github.com/docker/machine => github.com/rancher/machine v0.16.2
+
 require (
+	github.com/docker/machine v0.16.2
 	github.com/exoscale/egoscale/v3 v3.1.31
 	github.com/stretchr/testify v1.11.1
 )
 
 require (
-	github.com/docker/docker v25.0.8+incompatible // indirect
-	github.com/docker/machine v0.16.2
-	github.com/moby/term v0.5.2 // indirect
 	github.com/rogpeppe/go-internal v1.13.1 // indirect
 	golang.org/x/crypto v0.42.0 // indirect
 	golang.org/x/sys v0.36.0 // indirect
@@ -26,6 +27,7 @@ require (
 require (
 	github.com/Azure/go-ansiterm v0.0.0-20250102033503-faa5f7b0171c // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
+	github.com/docker/docker v0.0.0-00010101000000-000000000000 // indirect
 	github.com/fsnotify/fsnotify v1.7.0 // indirect
 	github.com/go-playground/locales v0.14.0 // indirect
 	github.com/go-playground/universal-translator v0.18.0 // indirect
@@ -38,6 +40,7 @@ require (
 	github.com/leodido/go-urn v1.2.1 // indirect
 	github.com/magiconair/properties v1.8.7 // indirect
 	github.com/mitchellh/mapstructure v1.5.0 // indirect
+	github.com/moby/term v0.5.2 // indirect
 	github.com/pelletier/go-toml/v2 v2.1.0 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
 	github.com/sagikazarmark/locafero v0.4.0 // indirect
