@@ -1,11 +1,12 @@
 package main
 
 import (
-	kubiqo "driver/driver" // update to the module path if you rename the module
+	"github.com/rancher/machine/libmachine/drivers/plugin"
 
-	"github.com/docker/machine/libmachine/drivers/plugin"
+	// change this import to match your go.mod module path
+	"github.com/francoismeulenberg/docker-machine-driver-kubiqo/drivers"
 )
 
 func main() {
-	plugin.RegisterDriver(kubiqo.NewDriver("", ""))
+	plugin.RegisterDriver(drivers.NewDriver)
 }
