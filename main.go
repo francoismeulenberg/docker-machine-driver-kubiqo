@@ -6,5 +6,5 @@ import (
 )
 
 func main() {
-	plugin.RegisterDriver(kubiqo.NewDriver)
+	plugin.RegisterDriver(kubiqo.NewDriver("", ""))
 }

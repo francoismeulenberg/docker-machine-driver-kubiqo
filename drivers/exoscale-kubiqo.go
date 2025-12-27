@@ -183,7 +183,7 @@ func (d *Driver) GetSSHUsername() string {
 
 // DriverName returns the name of the driver
 func (d *Driver) DriverName() string {
-	return "exoscale"
+	return "kubiqo"
 }
 
 // UnmarshalJSON loads driver config from JSON. This function is used by the RPCServerDriver that wraps
@@ -204,14 +204,13 @@ func (d *Driver) UnmarshalJSON(data []byte) error {
 	// Copy unmarshalled data back to `d`.
 	*d = Driver(target)
 
-	// Make sure to reload values that are subject to change from envvars and os.Args.
-	driverOpts := rpcdriver.GetDriverOpts(d.GetCreateFlags(), os.Args)
-	if _, ok := driverOpts.Values["exoscale-api-key"]; ok {
-		d.APIKey = driverOpts.String("exoscale-api-key")
+	// Make sure to reload values that are subject to change from envvars.
+	if apiKey := os.Getenv("EXOSCALE_API_KEY"); apiKey != "" {
+		d.APIKey = apiKey
 	}
 
-	if _, ok := driverOpts.Values["exoscale-api-secret-key"]; ok {
-		d.APISecretKey = driverOpts.String("exoscale-api-secret-key")
+	if apiSecretKey := os.Getenv("EXOSCALE_API_SECRET_KEY"); apiSecretKey != "" {
+		d.APISecretKey = apiSecretKey
 	}
 
 	return nil
