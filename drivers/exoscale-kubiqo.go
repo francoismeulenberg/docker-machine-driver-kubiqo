@@ -186,6 +186,24 @@ func (d *Driver) DriverName() string {
 	return "kubiqo"
 }
 
+// GetIP returns the IP address of the instance
+func (d *Driver) GetIP() (string, error) {
+	if d.IPAddress == "" {
+		instance, err := d.getInstance()
+		if err != nil {
+			return "", err
+		}
+
+		if instance.PublicIP != nil {
+			return instance.PublicIP.String(), nil
+		}
+
+		return "", fmt.Errorf("instance has no public IP address")
+	}
+
+	return d.IPAddress, nil
+}
+
 // UnmarshalJSON loads driver config from JSON. This function is used by the RPCServerDriver that wraps
 // all drivers as a means of populating an already-initialized driver with new configuration.
 // See `RPCServerDriver.SetConfigRaw`.
