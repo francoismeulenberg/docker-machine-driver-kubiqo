@@ -1,4 +1,4 @@
-package exoscale
+package kubiqo
 
 import (
 	"bytes"
@@ -181,7 +181,7 @@ func (d *Driver) GetSSHUsername() string {
 
 // DriverName returns the name of the driver
 func (d *Driver) DriverName() string {
-	return "exoscale"
+	return "kubiqo"
 }
 
 // UnmarshalJSON loads driver config from JSON. This function is used by the RPCServerDriver that wraps
