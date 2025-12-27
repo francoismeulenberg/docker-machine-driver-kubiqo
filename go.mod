@@ -1,7 +1,8 @@
-module github.com/rancher/machine
+module github.com/francoismeulenberg/docker-machine-driver-kubiqo
 
 go 1.24.0
 
-toolchain go1.24.7
-
-replace github.com/urfave/cli => github.com/urfave/cli v1.11.1-0.20151120215642-0302d3914d2a // newer versions of this will break the rpc binding code
+require (
+  github.com/docker/machine v0.16.2
+  github.com/exoscale/egoscale/v3 v3.1.31
+)
