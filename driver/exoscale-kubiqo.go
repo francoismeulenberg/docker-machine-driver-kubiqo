@@ -24,7 +24,6 @@ import (
 	"github.com/exoscale/egoscale/v3/credentials"
 )
 
-// Driver is the struct compatible with github.com/rancher/machine/libmachine/drivers.Driver interface
 type Driver struct {
 	*drivers.BaseDriver
 	URL              string
@@ -56,6 +55,20 @@ const (
 manage_etc_hosts: localhost
 `
 )
+
+// NewDriver creates a Driver with the specified machineName and storePath.
+func NewDriver(machineName, storePath string) drivers.Driver {
+	return &Driver{
+		InstanceProfile:  defaultInstanceProfile,
+		DiskSize:         defaultDiskSize,
+		Image:            defaultImage,
+		AvailabilityZone: defaultAvailabilityZone,
+		BaseDriver: &drivers.BaseDriver{
+			MachineName: machineName,
+			StorePath:   storePath,
+		},
+	}
+}
 
 // GetCreateFlags registers the flags this driver adds to
 // "docker hosts create"
@@ -132,20 +145,6 @@ func (d *Driver) GetCreateFlags() []mcnflag.Flag {
 	}
 }
 
-// NewDriver creates a Driver with the specified machineName and storePath.
-func NewDriver(machineName, storePath string) drivers.Driver {
-	return &Driver{
-		InstanceProfile:  defaultInstanceProfile,
-		DiskSize:         defaultDiskSize,
-		Image:            defaultImage,
-		AvailabilityZone: defaultAvailabilityZone,
-		BaseDriver: &drivers.BaseDriver{
-			MachineName: machineName,
-			StorePath:   storePath,
-		},
-	}
-}
-
 // GetSSHHostname returns the hostname to use with SSH
 func (d *Driver) GetSSHHostname() (string, error) {
 	return d.GetIP()
@@ -203,14 +202,18 @@ func (d *Driver) UnmarshalJSON(data []byte) error {
 	// Copy unmarshalled data back to `d`.
 	*d = Driver(target)
 
-	// Reload API credentials from environment variables if they're set
-	// This ensures credentials work with Rancher's credential management
-	if apiKey := os.Getenv("EXOSCALE_API_KEY"); apiKey != "" {
-		d.APIKey = apiKey
+	// Reload API credentials from environment variables only if not already set
+	// This ensures credentials work with both direct CLI usage and Rancher's credential management
+	if d.APIKey == "" {
+		if apiKey := os.Getenv("EXOSCALE_API_KEY"); apiKey != "" {
+			d.APIKey = apiKey
+		}
 	}
 
-	if apiSecret := os.Getenv("EXOSCALE_API_SECRET_KEY"); apiSecret != "" {
-		d.APISecretKey = apiSecret
+	if d.APISecretKey == "" {
+		if apiSecret := os.Getenv("EXOSCALE_API_SECRET_KEY"); apiSecret != "" {
+			d.APISecretKey = apiSecret
+		}
 	}
 
 	return nil
