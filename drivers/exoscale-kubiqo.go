@@ -1,4 +1,4 @@
-package exoscale
+package kubiqo
 
 import (
 	"bytes"
@@ -22,10 +22,10 @@ import (
 	"github.com/docker/machine/libmachine/state"
 	v3 "github.com/exoscale/egoscale/v3"
 	"github.com/exoscale/egoscale/v3/credentials"
-	rpcdriver "github.com/rancher/machine/libmachine/drivers/rpc"
 )
 
-// Driver is the struct compatible with github.com/rancher/machine/libmachine/drivers.Driver interface
+// Driver is the struct compatible with github.com/docker/machine/libmachine/drivers.Driver interface
+
 type Driver struct {
 	*drivers.BaseDriver
 	URL              string
