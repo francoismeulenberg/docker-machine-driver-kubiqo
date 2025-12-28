@@ -69,57 +69,101 @@ A customized Exoscale driver for Docker Machine / Rancher Machine, forked from [
 - **Added:** Private network attachment status logging
 - **Code:** Lines 619-625, 608, 851-854 in [driver/exoscale-kubiqo.go](driver/exoscale-kubiqo.go)
 
+### 9. Flag Naming for Rancher Integration
+- **Problem:** Rancher passes flags with driver name as prefix (e.g., `--kubiqo-availability-zone`)
+- **Original:** All flags used `exoscale-` prefix (e.g., `--exoscale-availability-zone`)
+- **Changed:** All flag names updated from `exoscale-*` to `kubiqo-*` to match driver name
+- **Affected Flags:** `kubiqo-url`, `kubiqo-api-key`, `kubiqo-api-secret-key`, `kubiqo-instance-profile`, `kubiqo-disk-size`, `kubiqo-image`, `kubiqo-image-visibility`, `kubiqo-security-group`, `kubiqo-availability-zone`, `kubiqo-ssh-user`, `kubiqo-ssh-key`, `kubiqo-userdata`, `kubiqo-affinity-group`, `kubiqo-private-network`
+- **Environment Variables:** Still use `EXOSCALE_*` for CLI compatibility (e.g., `EXOSCALE_API_KEY`)
+- **Code Location:** Lines 88-167, 256-272 in [driver/exoscale-kubiqo.go](driver/exoscale-kubiqo.go)
+
+### 10. Rancher Credential Environment Variable Support
+- **Problem:** Rancher sets credentials via environment variables, not flags
+- **Implementation:** Added environment variable fallback in both `UnmarshalJSON()` and `SetConfigFromFlags()`
+- **Credential Variables Checked:**
+  1. `EXOSCALE_API_KEY` / `EXOSCALE_API_SECRET_KEY` (CLI/direct usage)
+  2. `KUBIQO_API_KEY` / `KUBIQO_API_SECRET_KEY` (Rancher format)
+- **Reason:** Rancher injects credentials as `KUBIQO_API_KEY` environment variables based on NodeDriver credential field mappings
+- **Code Location:** Lines 229-248 (UnmarshalJSON), Lines 273-290 (SetConfigFromFlags) in [driver/exoscale-kubiqo.go](driver/exoscale-kubiqo.go)
+
+### 11. Binary Size Optimization
+- **Problem:** Original build was 17MB with debug symbols, causing download timeouts in Rancher
+- **Solution:** Build with stripped symbols using `-ldflags="-s -w"`
+- **Result:** Reduced from 17MB to 12MB (30% reduction)
+- **Build Command:**
+  ```sh
+  go build -ldflags="-s -w" -o dist/docker-machine-driver-kubiqo main.go
+  ```
+- **Impact:** Faster downloads, fewer timeout errors during machine provisioning
+
 ## Build and Install
 
+### Standard Build (with debug symbols)
 Build from the module directory:
 
-```sh
+```bash
 go build -o dist/docker-machine-driver-kubiqo .
+```
+
+### Production Build (optimized, stripped symbols)
+For deployment in Rancher or bandwidth-constrained environments:
+
+```bash
+go build -ldflags="-s -w" -o dist/docker-machine-driver-kubiqo main.go
+```
+
+The `-ldflags="-s -w"` flags strip debug symbols, reducing binary size from ~17MB to ~12MB.
+
+Calculate checksum for Rancher NodeDriver manifest:
+
+```bash
+sha256sum dist/docker-machine-driver-kubiqo
 ```
 
 Install the driver:
 
-```sh
+```bash
 sudo cp dist/docker-machine-driver-kubiqo /usr/local/bin/
 chmod +x /usr/local/bin/docker-machine-driver-kubiqo
 ```
 
 Verify installation:
 
-```sh
+```bash
 docker-machine create --driver kubiqo --help
 ```
 
 ## Usage
 
 ### With Public Templates (by name)
-```sh
+```bash
 docker-machine create -d kubiqo \
-  --exoscale-api-key <key> \
-  --exoscale-api-secret-key <secret> \
-  --exoscale-availability-zone "de-fra-1" \
-  --exoscale-image "linux-ubuntu-24.04-lts-64-bit" \
+  --kubiqo-api-key <key> \
+  --kubiqo-api-secret-key <secret> \
+  --kubiqo-availability-zone "de-fra-1" \
+  --kubiqo-image "Linux Ubuntu 24.04 LTS 64-bit" \
   my-machine
 ```
 
 ### With Private Templates (by UUID)
-```sh
+```bash
 docker-machine create -d kubiqo \
-  --exoscale-api-key <key> \
-  --exoscale-api-secret-key <secret> \
-  --exoscale-availability-zone "my-zone" \
-  --exoscale-image <template-uuid> \
+  --kubiqo-api-key <key> \
+  --kubiqo-api-secret-key <secret> \
+  --kubiqo-availability-zone "de-fra-1" \
+  --kubiqo-image <template-uuid> \
   my-machine
 ```
 
 ### With Private Networks
-```sh
+```bash
 docker-machine create -d kubiqo \
-  --exoscale-api-key <key> \
-  --exoscale-api-secret-key <secret> \
-  --exoscale-availability-zone "de-fra-1" \
-  --exoscale-availability-zone "my-zone" \
-  --exoscale-image <template-uuid> \
+  --kubiqo-api-key <key> \
+  --kubiqo-api-secret-key <secret> \
+  --kubiqo-availability-zone "de-fra-1" \
+  --kubiqo-private-network "my-network-1" \
+  --kubiqo-private-network "my-network-2" \
+  --kubiqo-image <template-uuid> \
   my-machine
 ```
 
@@ -128,9 +172,9 @@ docker-machine create -d kubiqo \
 SLE Micro uses transactional updates and may require custom Docker installation. Options:
 
 1. **Pre-installed Docker image** (recommended):
-   ```sh
+   ```bash
    docker-machine create -d kubiqo \
-     --exoscale-image "<sle-micro-template-uuid>" \
+     --kubiqo-image "<sle-micro-template-uuid>" \
      --engine-install-url "none" \
      ...
    ```
@@ -144,11 +188,99 @@ SLE Micro uses transactional updates and may require custom Docker installation.
      - systemctl enable --now docker
      - usermod -aG docker root
    ```
-   ```sh
+   ```bash
    docker-machine create -d kubiqo \
-     --exoscale-userdata /path/to/userdata.yaml \
+     --kubiqo-userdata /path/to/userdata.yaml \
      ...
    ```
+
+## Rancher Integration
+
+### NodeDriver Manifest
+
+Create a NodeDriver resource for Rancher:
+
+```yaml
+apiVersion: management.cattle.io/v3
+kind: NodeDriver
+metadata:
+  name: kubiqo
+  annotations:
+    privateCredentialFields: apiSecretKey
+    publicCredentialFields: apiKey
+spec:
+  active: true
+  builtin: false
+  checksum: <sha256-checksum-of-binary>
+  displayName: kubiqo
+  url: https://<your-rancher-url>/assets/docker-machine-driver-kubiqo
+  whitelistDomains:
+  - api.exoscale.ch
+```
+
+### Deployment Steps
+
+1. **Build the driver** (with stripped symbols for smaller size):
+   ```bash
+   go build -ldflags="-s -w" -o dist/docker-machine-driver-kubiqo main.go
+   ```
+
+2. **Calculate checksum**:
+   ```bash
+   sha256sum dist/docker-machine-driver-kubiqo
+   ```
+
+3. **Upload to Rancher**:
+   - Upload binary to `https://<rancher-url>/assets/docker-machine-driver-kubiqo`
+   - Ensure it's accessible from cluster pods
+
+4. **Update manifest** with the checksum and apply:
+   ```bash
+   kubectl apply -f node-driver-manifest.yaml
+   ```
+
+5. **Create Cloud Credentials** in Rancher:
+   - Navigate to Cluster Management → Cloud Credentials
+   - Create new credential with:
+     - `apiKey`: Your Exoscale API key
+     - `apiSecretKey`: Your Exoscale API secret
+
+6. **Provision Cluster**: Use the kubiqo driver with your cloud credentials
+
+### Known Issues & Solutions
+
+#### Download Timeouts
+**Problem:** Machine provisioning pods timeout downloading the driver binary (curl error 28)
+
+**Cause:** 
+- Binary size (12MB even when stripped)
+- Nginx ingress `proxy-connect-timeout: 30s` may be insufficient for slower connections
+
+**Solutions:**
+1. Increase nginx ingress timeout in Rancher ingress annotations:
+   ```yaml
+   nginx.ingress.kubernetes.io/proxy-connect-timeout: "120"
+   ```
+
+2. Use CDN or faster hosting (e.g., GitHub Releases)
+
+3. Further optimize binary size with UPX compression (advanced)
+
+#### Credential Errors
+**Problem:** `error setting machine configuration: missing an API key`
+
+**Cause:** Environment variables not being read correctly
+
+**Solution:** Ensure both `UnmarshalJSON()` and `SetConfigFromFlags()` check environment variables. The driver now checks:
+- `EXOSCALE_API_KEY` / `EXOSCALE_API_SECRET_KEY` (CLI usage)
+- `KUBIQO_API_KEY` / `KUBIQO_API_SECRET_KEY` (Rancher injection)
+
+#### Flag Naming Mismatch
+**Problem:** `flag provided but not defined: -kubiqo-availability-zone`
+
+**Cause:** Rancher prepends driver name to flags, but driver expected `--exoscale-*` flags
+
+**Solution:** All flags renamed from `exoscale-*` to `kubiqo-*` prefix
 
 ## Dependencies
 
@@ -170,3 +302,33 @@ replace (
 - Compatible with Rancher's Docker Machine fork (v0.16.2)
 - Uses Exoscale egoscale/v3 SDK (v3.1.31)
 - Private templates must be specified by UUID, not by name
+- Flag names use `kubiqo-` prefix for Rancher compatibility
+- Environment variables still use `EXOSCALE_` prefix for CLI compatibility
+- Binary should be built with stripped symbols (`-ldflags="-s -w"`) for production use
+
+## Troubleshooting
+
+### Check Driver Download from Pod
+```bash
+kubectl run test-download --rm -it --image=curlimages/curl -- \
+  curl -v -o /tmp/driver https://<rancher-url>/assets/docker-machine-driver-kubiqo
+```
+
+### Verify Credentials in Machine Pod
+```bash
+kubectl get secret <machine-name>-machine-driver-secret -n fleet-default -o yaml
+```
+
+Should contain:
+- `KUBIQO_API_KEY`
+- `KUBIQO_API_SECRET_KEY`
+
+### Check Machine Provisioning Logs
+```bash
+kubectl logs -n fleet-default <machine-pod-name> -c machine
+```
+
+Common errors:
+- `Curl failed with error code 28`: Download timeout (increase ingress timeout)
+- `flag provided but not defined`: Flag naming mismatch (ensure using kubiqo- prefix)
+- `missing an API key`: Credential environment variables not set/read correctly
