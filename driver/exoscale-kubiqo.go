@@ -87,81 +87,81 @@ func (d *Driver) GetCreateFlags() []mcnflag.Flag {
 	return []mcnflag.Flag{
 		mcnflag.StringFlag{
 			EnvVar: "EXOSCALE_ENDPOINT",
-			Name:   "exoscale-url",
+			Name:   "kubiqo-url",
 			Usage:  "exoscale API endpoint",
 		},
 		mcnflag.StringFlag{
 			EnvVar: "EXOSCALE_API_KEY",
-			Name:   "exoscale-api-key",
+			Name:   "kubiqo-api-key",
 			Usage:  "exoscale API key",
 		},
 		mcnflag.StringFlag{
 			EnvVar: "EXOSCALE_API_SECRET_KEY",
-			Name:   "exoscale-api-secret-key",
+			Name:   "kubiqo-api-secret-key",
 			Usage:  "exoscale API secret key",
 		},
 		mcnflag.StringFlag{
 			EnvVar: "EXOSCALE_INSTANCE_PROFILE",
-			Name:   "exoscale-instance-profile",
+			Name:   "kubiqo-instance-profile",
 			Value:  defaultInstanceProfile,
 			Usage:  "exoscale instance profile (Small, Medium, Large, ...)",
 		},
 		mcnflag.IntFlag{
 			EnvVar: "EXOSCALE_DISK_SIZE",
-			Name:   "exoscale-disk-size",
+			Name:   "kubiqo-disk-size",
 			Value:  defaultDiskSize,
 			Usage:  "exoscale disk size (10, 50, 100, 200, 400)",
 		},
 		mcnflag.StringFlag{
 			EnvVar: "EXOSCALE_IMAGE",
-			Name:   "exoscale-image",
+			Name:   "kubiqo-image",
 			Value:  defaultImage,
 			Usage:  "exoscale image template",
 		},
 		mcnflag.StringFlag{
 			EnvVar: "EXOSCALE_IMAGE_VISIBILITY",
-			Name:   "exoscale-image-visibility",
+			Name:   "kubiqo-image-visibility",
 			Value:  defaultImageVisibility,
 			Usage:  "exoscale image template visibility (public, private)",
 		},
 		mcnflag.StringSliceFlag{
 			EnvVar: "EXOSCALE_SECURITY_GROUP",
-			Name:   "exoscale-security-group",
+			Name:   "kubiqo-security-group",
 			Value:  []string{defaultSecurityGroup},
 			Usage:  "exoscale security group",
 		},
 		mcnflag.StringFlag{
 			EnvVar: "EXOSCALE_AVAILABILITY_ZONE",
-			Name:   "exoscale-availability-zone",
+			Name:   "kubiqo-availability-zone",
 			Value:  defaultAvailabilityZone,
 			Usage:  "exoscale availability zone",
 		},
 		mcnflag.StringFlag{
 			EnvVar: "EXOSCALE_SSH_USER",
-			Name:   "exoscale-ssh-user",
+			Name:   "kubiqo-ssh-user",
 			Value:  "",
 			Usage:  "name of the ssh user",
 		},
 		mcnflag.StringFlag{
 			EnvVar: "EXOSCALE_SSH_KEY",
-			Name:   "exoscale-ssh-key",
+			Name:   "kubiqo-ssh-key",
 			Value:  "",
 			Usage:  "path to the SSH user private key",
 		},
 		mcnflag.StringFlag{
 			EnvVar: "EXOSCALE_USERDATA",
-			Name:   "exoscale-userdata",
+			Name:   "kubiqo-userdata",
 			Usage:  "path to file with cloud-init user-data",
 		},
 		mcnflag.StringSliceFlag{
 			EnvVar: "EXOSCALE_AFFINITY_GROUP",
-			Name:   "exoscale-affinity-group",
+			Name:   "kubiqo-affinity-group",
 			Value:  []string{},
 			Usage:  "exoscale affinity group",
 		},
 		mcnflag.StringSliceFlag{
 			EnvVar: "EXOSCALE_PRIVATE_NETWORK",
-			Name:   "exoscale-private-network",
+			Name:   "kubiqo-private-network",
 			Value:  []string{},
 			Usage:  "exoscale private network",
 		},
@@ -253,25 +253,25 @@ func (d *Driver) UnmarshalJSON(data []byte) error {
 // SetConfigFromFlags configures the driver with the object that was returned
 // by RegisterCreateFlags
 func (d *Driver) SetConfigFromFlags(flags drivers.DriverOptions) error {
-	d.URL = flags.String("exoscale-url")
-	d.APIKey = flags.String("exoscale-api-key")
-	d.APISecretKey = flags.String("exoscale-api-secret-key")
-	d.InstanceProfile = flags.String("exoscale-instance-profile")
-	d.DiskSize = int64(flags.Int("exoscale-disk-size"))
-	d.Image = flags.String("exoscale-image")
-	d.ImageVisibility = flags.String("exoscale-image-visibility")
-	d.SecurityGroups = flags.StringSlice("exoscale-security-group")
-	d.AffinityGroups = flags.StringSlice("exoscale-affinity-group")
-	d.AvailabilityZone = flags.String("exoscale-availability-zone")
-	d.SSHUser = flags.String("exoscale-ssh-user")
-	d.SSHKey = flags.String("exoscale-ssh-key")
-	d.UserDataFile = flags.String("exoscale-userdata")
+	d.URL = flags.String("kubiqo-url")
+	d.APIKey = flags.String("kubiqo-api-key")
+	d.APISecretKey = flags.String("kubiqo-api-secret-key")
+	d.InstanceProfile = flags.String("kubiqo-instance-profile")
+	d.DiskSize = int64(flags.Int("kubiqo-disk-size"))
+	d.Image = flags.String("kubiqo-image")
+	d.ImageVisibility = flags.String("kubiqo-image-visibility")
+	d.SecurityGroups = flags.StringSlice("kubiqo-security-group")
+	d.AffinityGroups = flags.StringSlice("kubiqo-affinity-group")
+	d.AvailabilityZone = flags.String("kubiqo-availability-zone")
+	d.SSHUser = flags.String("kubiqo-ssh-user")
+	d.SSHKey = flags.String("kubiqo-ssh-key")
+	d.UserDataFile = flags.String("kubiqo-userdata")
 	d.UserData = []byte(defaultCloudInit)
-	d.PrivateNetworks = flags.StringSlice("exoscale-private-network")
+	d.PrivateNetworks = flags.StringSlice("kubiqo-private-network")
 	d.SetSwarmConfigFromFlags(flags)
 
 	if d.APIKey == "" || d.APISecretKey == "" {
-		return errors.New("missing an API key (--exoscale-api-key) or API secret key (--exoscale-api-secret-key)")
+		return errors.New("missing an API key (--kubiqo-api-key) or API secret key (--kubiqo-api-secret-key)")
 	}
 
 	return nil
