@@ -270,6 +270,24 @@ func (d *Driver) SetConfigFromFlags(flags drivers.DriverOptions) error {
 	d.PrivateNetworks = flags.StringSlice("kubiqo-private-network")
 	d.SetSwarmConfigFromFlags(flags)
 
+	// Fall back to environment variables if credentials aren't provided via flags
+	// This ensures credentials work with both direct CLI usage and Rancher's credential management
+	if d.APIKey == "" {
+		if apiKey := os.Getenv("EXOSCALE_API_KEY"); apiKey != "" {
+			d.APIKey = apiKey
+		} else if apiKey := os.Getenv("KUBIQO_API_KEY"); apiKey != "" {
+			d.APIKey = apiKey
+		}
+	}
+
+	if d.APISecretKey == "" {
+		if apiSecret := os.Getenv("EXOSCALE_API_SECRET_KEY"); apiSecret != "" {
+			d.APISecretKey = apiSecret
+		} else if apiSecret := os.Getenv("KUBIQO_API_SECRET_KEY"); apiSecret != "" {
+			d.APISecretKey = apiSecret
+		}
+	}
+
 	if d.APIKey == "" || d.APISecretKey == "" {
 		return errors.New("missing an API key (--kubiqo-api-key) or API secret key (--kubiqo-api-secret-key)")
 	}
