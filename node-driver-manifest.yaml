@@ -1,0 +1,22 @@
+apiVersion: management.cattle.io/v3
+kind: NodeDriver
+metadata:
+  annotations:
+    io.cattle.nodedriver/ui-field-hints: '{"sshKey":{"type":"multiline"},"userdata":{"type":"multiline"}}'
+    field.cattle.io/description: https://raw.githubusercontent.com/francoismeulenberg/docker-machine-driver-kubiqo/v0.0.11/dist/docker-machine-driver-kubiqo
+    lifecycle.cattle.io/create.node-driver-controller: "true"
+    nodedriver.cattle.io/file-to-field-aliases: sshKey:sshKey,userdata:userdata
+    privateCredentialFields: apiSecretKey
+    publicCredentialFields: apiKey
+  finalizers:
+  - controller.cattle.io/node-driver-controller
+  labels:
+    cattle.io/creator: norman
+  name: kubiqo
+spec:
+  active: true
+  displayName: kubiqo
+  builtin: false
+  url: https://raw.githubusercontent.com/francoismeulenberg/docker-machine-driver-kubiqo/v0.0.11/dist/docker-machine-driver-kubiqo
+  whitelistDomains:
+  - api.exoscale.ch

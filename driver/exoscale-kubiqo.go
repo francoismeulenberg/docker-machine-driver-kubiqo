@@ -228,13 +228,21 @@ func (d *Driver) UnmarshalJSON(data []byte) error {
 	// Reload API credentials from environment variables only if not already set
 	// This ensures credentials work with both direct CLI usage and Rancher's credential management
 	if d.APIKey == "" {
+		// Try standard environment variable first
 		if apiKey := os.Getenv("EXOSCALE_API_KEY"); apiKey != "" {
+			d.APIKey = apiKey
+		} else if apiKey := os.Getenv("KUBIQOCREDENTIALCONFIG_APIKEY"); apiKey != "" {
+			// Fall back to Rancher's kubiqo credential format
 			d.APIKey = apiKey
 		}
 	}
 
 	if d.APISecretKey == "" {
+		// Try standard environment variable first
 		if apiSecret := os.Getenv("EXOSCALE_API_SECRET_KEY"); apiSecret != "" {
+			d.APISecretKey = apiSecret
+		} else if apiSecret := os.Getenv("KUBIQOCREDENTIALCONFIG_APISECRETKEY"); apiSecret != "" {
+			// Fall back to Rancher's kubiqo credential format
 			d.APISecretKey = apiSecret
 		}
 	}
