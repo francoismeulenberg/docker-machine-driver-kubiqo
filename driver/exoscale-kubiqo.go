@@ -34,6 +34,7 @@ type Driver struct {
 	Image            string
 	SecurityGroups   []string
 	AffinityGroups   []string
+	PrivateNetworks  []string
 	AvailabilityZone string
 	SSHKey           string
 	KeyPair          string
@@ -142,6 +143,12 @@ func (d *Driver) GetCreateFlags() []mcnflag.Flag {
 			Value:  []string{},
 			Usage:  "exoscale affinity group",
 		},
+		mcnflag.StringSliceFlag{
+			EnvVar: "EXOSCALE_PRIVATE_NETWORK",
+			Name:   "exoscale-private-network",
+			Value:  []string{},
+			Usage:  "exoscale private network",
+		},
 	}
 }
 
@@ -235,6 +242,7 @@ func (d *Driver) SetConfigFromFlags(flags drivers.DriverOptions) error {
 	d.SSHKey = flags.String("exoscale-ssh-key")
 	d.UserDataFile = flags.String("exoscale-userdata")
 	d.UserData = []byte(defaultCloudInit)
+	d.PrivateNetworks = flags.StringSlice("exoscale-private-network")
 	d.SetSwarmConfigFromFlags(flags)
 
 	if d.APIKey == "" || d.APISecretKey == "" {
@@ -701,6 +709,29 @@ func (d *Driver) Create() error {
 		})
 	}
 
+	// Private Networks
+	var pnets []v3.PrivateNetwork
+	for _, networkName := range d.PrivateNetworks {
+		if networkName == "" {
+			continue
+		}
+
+		pnetList, err := client.ListPrivateNetworks(ctx)
+		if err != nil {
+			return err
+		}
+
+		pnet, err := pnetList.FindPrivateNetwork(networkName)
+		if err != nil {
+			return fmt.Errorf("private network %v not found: %w", networkName, err)
+		}
+
+		log.Debugf("Private network %v = %s", networkName, pnet.ID)
+		pnets = append(pnets, v3.PrivateNetwork{
+			ID: pnet.ID,
+		})
+	}
+
 	// SSH key pair
 	if d.SSHKey == "" {
 		keyPairName := fmt.Sprintf("rancher-machine-%s", d.MachineName)
@@ -811,6 +842,26 @@ ssh_authorized_keys:
 	}
 	d.ID = instance.ID
 	log.Infof("IP Address: %v, SSH User: %v", d.IPAddress, d.GetSSHUsername())
+
+	// Attach Private Networks
+	for _, pnet := range pnets {
+		log.Infof("Attaching private network %s to instance %s...", pnet.ID, d.ID)
+		op, err := client.AttachInstanceToPrivateNetwork(ctx, pnet.ID, v3.AttachInstanceToPrivateNetworkRequest{
+			Instance: &v3.AttachInstanceToPrivateNetworkRequestInstance{ID: instance.ID},
+		})
+		if err != nil {
+			log.Errorf("Failed to attach private network %s: %v", pnet.ID, err)
+			return fmt.Errorf("failed to attach private network: %w", err)
+		}
+
+		_, err = client.Wait(ctx, op, v3.OperationStateSuccess)
+		if err != nil {
+			log.Errorf("Failed to wait for private network attachment %s: %v", pnet.ID, err)
+			return fmt.Errorf("failed to attach private network: %w", err)
+		}
+
+		log.Debugf("Successfully attached private network %s", pnet.ID)
+	}
 
 	if instance.Template != nil && instance.Template.PasswordEnabled != nil && *instance.Template.PasswordEnabled {
 		res, err := client.RevealInstancePassword(ctx, instance.ID)
