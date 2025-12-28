@@ -107,8 +107,8 @@ docker-machine create -d kubiqo \
 docker-machine create -d kubiqo \
   --exoscale-api-key <key> \
   --exoscale-api-secret-key <secret> \
-  --exoscale-availability-zone "de-fra-1" \
-  --exoscale-image "d0d80630-3d41-443b-b954-b2c0c022dc8a" \
+  --exoscale-availability-zone "my-zone" \
+  --exoscale-image <template-uuid> \
   my-machine
 ```
 
@@ -118,8 +118,8 @@ docker-machine create -d kubiqo \
   --exoscale-api-key <key> \
   --exoscale-api-secret-key <secret> \
   --exoscale-availability-zone "de-fra-1" \
-  --exoscale-private-network "my-private-network" \
-  --exoscale-image "d0d80630-3d41-443b-b954-b2c0c022dc8a" \
+  --exoscale-availability-zone "my-zone" \
+  --exoscale-image <template-uuid> \
   my-machine
 ```
 
