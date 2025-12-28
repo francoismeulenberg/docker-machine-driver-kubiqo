@@ -32,6 +32,7 @@ type Driver struct {
 	InstanceProfile  string
 	DiskSize         int64
 	Image            string
+	ImageVisibility  string
 	SecurityGroups   []string
 	AffinityGroups   []string
 	PrivateNetworks  []string
@@ -49,6 +50,7 @@ const (
 	defaultInstanceProfile  = "Small"
 	defaultDiskSize         = 50
 	defaultImage            = "Linux Ubuntu 24.04 LTS 64-bit"
+	defaultImageVisibility  = "public"
 	defaultAvailabilityZone = "ch-dk-2"
 	defaultSSHUser          = "root"
 	defaultSecurityGroup    = "rancher-machine"
@@ -57,12 +59,20 @@ manage_etc_hosts: localhost
 `
 )
 
+type TemplateVisibility string
+
+const (
+	TemplateVisibilityPublic  TemplateVisibility = "public"
+	TemplateVisibilityPrivate TemplateVisibility = "private"
+)
+
 // NewDriver creates a Driver with the specified machineName and storePath.
 func NewDriver(machineName, storePath string) drivers.Driver {
 	return &Driver{
 		InstanceProfile:  defaultInstanceProfile,
 		DiskSize:         defaultDiskSize,
 		Image:            defaultImage,
+		ImageVisibility:  defaultImageVisibility,
 		AvailabilityZone: defaultAvailabilityZone,
 		BaseDriver: &drivers.BaseDriver{
 			MachineName: machineName,
@@ -107,6 +117,12 @@ func (d *Driver) GetCreateFlags() []mcnflag.Flag {
 			Name:   "exoscale-image",
 			Value:  defaultImage,
 			Usage:  "exoscale image template",
+		},
+		mcnflag.StringFlag{
+			EnvVar: "EXOSCALE_IMAGE_VISIBILITY",
+			Name:   "exoscale-image-visibility",
+			Value:  defaultImageVisibility,
+			Usage:  "exoscale image template visibility (public, private)",
 		},
 		mcnflag.StringSliceFlag{
 			EnvVar: "EXOSCALE_SECURITY_GROUP",
@@ -235,6 +251,7 @@ func (d *Driver) SetConfigFromFlags(flags drivers.DriverOptions) error {
 	d.InstanceProfile = flags.String("exoscale-instance-profile")
 	d.DiskSize = int64(flags.Int("exoscale-disk-size"))
 	d.Image = flags.String("exoscale-image")
+	d.ImageVisibility = flags.String("exoscale-image-visibility")
 	d.SecurityGroups = flags.StringSlice("exoscale-security-group")
 	d.AffinityGroups = flags.StringSlice("exoscale-affinity-group")
 	d.AvailabilityZone = flags.String("exoscale-availability-zone")
@@ -581,42 +598,71 @@ func (d *Driver) Create() error {
 	}
 
 	// Image
-	templates, err := client.ListTemplates(ctx)
-	if err != nil {
-		return err
-	}
-
 	template := v3.Template{}
-
 	image := strings.ToLower(d.Image)
-	re := regexp.MustCompile(`^Linux (?P<name>.+?) (?P<version>[0-9.]+)\b`)
 
-	for _, tpl := range templates.Templates {
-		// Keep only 10GiB images
-		if tpl.Size>>30 != 10 {
-			continue
+	// Check if the image is a UUID (for direct template lookup)
+	uuidRegex := regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
+	if uuidRegex.MatchString(image) {
+		log.Debugf("Image appears to be a UUID, fetching template directly: %s", image)
+		tpl, err := client.GetTemplate(ctx, v3.UUID(image))
+		if err != nil {
+			return fmt.Errorf("unable to find template with ID %s: %w", d.Image, err)
+		}
+		template = *tpl
+		log.Debugf("Found template: %s (visibility: %s, size: %d GB)", template.Name, template.Visibility, template.Size>>30)
+	} else {
+		// Search through available templates by name
+		templates, err := client.ListTemplates(ctx)
+		if err != nil {
+			return err
 		}
 
-		fullname := strings.ToLower(tpl.Name)
-		if image == fullname {
-			template = tpl
-			break
-		}
+		re := regexp.MustCompile(`^Linux (?P<name>.+?) (?P<version>[0-9.]+)\b`)
 
-		submatch := re.FindStringSubmatch(tpl.Name)
-		if len(submatch) > 0 {
-			name := strings.ReplaceAll(strings.ToLower(submatch[1]), " ", "-")
-			version := submatch[2]
-			shortname := fmt.Sprintf("%s-%s", name, version)
+		log.Debugf("Looking for image: %s with visibility: %s", image, d.ImageVisibility)
+		log.Debugf("Total templates returned by API: %d", len(templates.Templates))
+		matchCount := 0
+		visibilityCounts := make(map[string]int)
+		for _, tpl := range templates.Templates {
+			visibilityCounts[string(tpl.Visibility)]++
+			// Filter by visibility
+			if string(tpl.Visibility) != d.ImageVisibility {
+				continue
+			}
+			matchCount++
+			if matchCount <= 10 {
+				log.Debugf("Template %d: %s (visibility: %s, size: %d GB)", matchCount, tpl.Name, tpl.Visibility, tpl.Size>>30)
+			}
 
-			if image == shortname {
+			// Keep only 10GiB images
+			if tpl.Size>>30 != 10 {
+				continue
+			}
+
+			fullname := strings.ToLower(tpl.Name)
+			if image == fullname {
 				template = tpl
 				break
 			}
+
+			submatch := re.FindStringSubmatch(tpl.Name)
+			if len(submatch) > 0 {
+				name := strings.ReplaceAll(strings.ToLower(submatch[1]), " ", "-")
+				version := submatch[2]
+				shortname := fmt.Sprintf("%s-%s", name, version)
+
+				if image == shortname {
+					template = tpl
+					break
+				}
+			}
 		}
-	}
-	if template.ID == "" {
-		return fmt.Errorf("unable to find image %v", d.Image)
+		log.Debugf("Visibility breakdown: %v", visibilityCounts)
+		log.Debugf("Found %d templates with visibility '%s'", matchCount, d.ImageVisibility)
+		if template.ID == "" {
+			return fmt.Errorf("unable to find image %v (searched %d templates with visibility '%s', total templates: %d)", d.Image, matchCount, d.ImageVisibility, len(templates.Templates))
+		}
 	}
 
 	// Reading the username from the template
