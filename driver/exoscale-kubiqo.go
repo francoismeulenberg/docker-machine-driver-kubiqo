@@ -231,7 +231,7 @@ func (d *Driver) UnmarshalJSON(data []byte) error {
 		// Try standard environment variable first
 		if apiKey := os.Getenv("EXOSCALE_API_KEY"); apiKey != "" {
 			d.APIKey = apiKey
-		} else if apiKey := os.Getenv("KUBIQOCREDENTIALCONFIG_APIKEY"); apiKey != "" {
+		} else if apiKey := os.Getenv("KUBIQO_API_KEY"); apiKey != "" {
 			// Fall back to Rancher's kubiqo credential format
 			d.APIKey = apiKey
 		}
@@ -241,7 +241,7 @@ func (d *Driver) UnmarshalJSON(data []byte) error {
 		// Try standard environment variable first
 		if apiSecret := os.Getenv("EXOSCALE_API_SECRET_KEY"); apiSecret != "" {
 			d.APISecretKey = apiSecret
-		} else if apiSecret := os.Getenv("KUBIQOCREDENTIALCONFIG_APISECRETKEY"); apiSecret != "" {
+		} else if apiSecret := os.Getenv("KUBIQO_API_SECRET_KEY"); apiSecret != "" {
 			// Fall back to Rancher's kubiqo credential format
 			d.APISecretKey = apiSecret
 		}
