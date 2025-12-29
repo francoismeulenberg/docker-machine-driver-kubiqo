@@ -44,6 +44,9 @@ type Driver struct {
 	UserDataFile     string
 	UserData         []byte
 	ID               v3.UUID `json:"Id"`
+	UseInstancePool  bool
+	InstancePoolID   v3.UUID `json:"InstancePoolId"`
+	InstancePoolSize int64
 }
 
 const (
@@ -165,6 +168,17 @@ func (d *Driver) GetCreateFlags() []mcnflag.Flag {
 			Value:  []string{},
 			Usage:  "exoscale private network",
 		},
+		mcnflag.BoolFlag{
+			EnvVar: "EXOSCALE_USE_INSTANCE_POOL",
+			Name:   "kubiqo-use-instance-pool",
+			Usage:  "create and manage instances via instance pool",
+		},
+		mcnflag.IntFlag{
+			EnvVar: "EXOSCALE_INSTANCE_POOL_SIZE",
+			Name:   "kubiqo-instance-pool-size",
+			Value:  1,
+			Usage:  "instance pool size (number of instances in the pool)",
+		},
 	}
 }
 
@@ -268,6 +282,8 @@ func (d *Driver) SetConfigFromFlags(flags drivers.DriverOptions) error {
 	d.UserDataFile = flags.String("kubiqo-userdata")
 	d.UserData = []byte(defaultCloudInit)
 	d.PrivateNetworks = flags.StringSlice("kubiqo-private-network")
+	d.UseInstancePool = flags.Bool("kubiqo-use-instance-pool")
+	d.InstancePoolSize = int64(flags.Int("kubiqo-instance-pool-size"))
 	d.SetSwarmConfigFromFlags(flags)
 
 	// Fall back to environment variables if credentials aren't provided via flags
@@ -609,6 +625,73 @@ func (d *Driver) createDefaultAffinityGroup(ctx context.Context, agName string) 
 	return op.Reference.ID, nil
 }
 
+// createInstancePool creates an instance pool
+func (d *Driver) createInstancePool(ctx context.Context, template v3.Template, instType v3.InstanceType, sgs []v3.SecurityGroup, ags []v3.AntiAffinityGroup, pnets []v3.PrivateNetwork, cloudInit []byte, sshKey *v3.SSHKey) (*v3.InstancePool, error) {
+	client, err := d.client(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	// Base64 encode the userdata
+	encodedUserData := base64.StdEncoding.EncodeToString(cloudInit)
+
+	// Build security group references
+	var securityGroups []v3.SecurityGroup
+	for _, sg := range sgs {
+		securityGroups = append(securityGroups, v3.SecurityGroup{ID: sg.ID})
+	}
+
+	// Build anti-affinity group references
+	var antiAffinityGroups []v3.AntiAffinityGroup
+	for _, ag := range ags {
+		antiAffinityGroups = append(antiAffinityGroups, v3.AntiAffinityGroup{ID: ag.ID})
+	}
+
+	// Build private network references
+	var privateNetworks []v3.PrivateNetwork
+	for _, pnet := range pnets {
+		privateNetworks = append(privateNetworks, v3.PrivateNetwork{ID: pnet.ID})
+	}
+
+	log.Infof("Creating instance pool %s with size %d...", d.MachineName, d.InstancePoolSize)
+
+	req := v3.CreateInstancePoolRequest{
+		Name:               d.MachineName,
+		Description:        "created by rancher-machine",
+		InstanceType:       &instType,
+		Template:           &template,
+		Size:               d.InstancePoolSize,
+		DiskSize:           d.DiskSize,
+		UserData:           encodedUserData,
+		Ipv6Enabled:        v3.Bool(true),
+		SecurityGroups:     securityGroups,
+		AntiAffinityGroups: antiAffinityGroups,
+		PrivateNetworks:    privateNetworks,
+	}
+
+	if sshKey != nil {
+		req.SSHKey = sshKey
+	}
+
+	op, err := client.CreateInstancePool(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+
+	log.Infof("Waiting for instance pool creation...")
+	res, err := client.Wait(ctx, op, v3.OperationStateSuccess)
+	if err != nil {
+		return nil, err
+	}
+
+	instancePool, err := client.GetInstancePool(ctx, res.Reference.ID)
+	if err != nil {
+		return nil, err
+	}
+
+	return instancePool, nil
+}
+
 // Create creates the Instance acting as the docker host
 func (d *Driver) Create() error {
 	cloudInit, err := d.getCloudInit()
@@ -879,69 +962,113 @@ ssh_authorized_keys:
 
 	// Base64 encode the userdata
 	d.UserData = cloudInit
-	encodedUserData := base64.StdEncoding.EncodeToString(d.UserData)
 
-	op, err := client.CreateInstance(ctx, v3.CreateInstanceRequest{
-		Template:           &template,
-		Ipv6Enabled:        v3.Bool(true),
-		DiskSize:           d.DiskSize,
-		InstanceType:       &instType,
-		UserData:           encodedUserData,
-		Name:               d.MachineName,
-		SSHKeys:            []v3.SSHKey{*sshKey},
-		SecurityGroups:     sgs,
-		AntiAffinityGroups: ags,
-	})
-	if err != nil {
-		return err
-	}
-
-	log.Infof("Deploying %s...", d.MachineName)
-
-	res, err := client.Wait(ctx, op, v3.OperationStateSuccess)
-	if err != nil {
-		return err
-	}
-
-	instance, err := client.GetInstance(ctx, res.Reference.ID)
-	if err != nil {
-		return err
-	}
-
-	IPAddress := instance.PublicIP.String()
-	if IPAddress != "<nil>" {
-		d.IPAddress = IPAddress
-	}
-	d.ID = instance.ID
-	log.Infof("IP Address: %v, SSH User: %v", d.IPAddress, d.GetSSHUsername())
-
-	// Attach Private Networks
-	for _, pnet := range pnets {
-		log.Infof("Attaching private network %s to instance %s...", pnet.ID, d.ID)
-		op, err := client.AttachInstanceToPrivateNetwork(ctx, pnet.ID, v3.AttachInstanceToPrivateNetworkRequest{
-			Instance: &v3.AttachInstanceToPrivateNetworkRequestInstance{ID: instance.ID},
-		})
-		if err != nil {
-			log.Errorf("Failed to attach private network %s: %v", pnet.ID, err)
-			return fmt.Errorf("failed to attach private network: %w", err)
-		}
-
-		_, err = client.Wait(ctx, op, v3.OperationStateSuccess)
-		if err != nil {
-			log.Errorf("Failed to wait for private network attachment %s: %v", pnet.ID, err)
-			return fmt.Errorf("failed to attach private network: %w", err)
-		}
-
-		log.Debugf("Successfully attached private network %s", pnet.ID)
-	}
-
-	if instance.Template != nil && instance.Template.PasswordEnabled != nil && *instance.Template.PasswordEnabled {
-		res, err := client.RevealInstancePassword(ctx, instance.ID)
+	if d.UseInstancePool {
+		// Create instance pool
+		instancePool, err := d.createInstancePool(ctx, template, instType, sgs, ags, pnets, cloudInit, sshKey)
 		if err != nil {
 			return err
 		}
 
-		d.Password = res.Password
+		d.InstancePoolID = instancePool.ID
+		log.Infof("Instance pool created: %s", d.InstancePoolID)
+
+		// Wait for at least one instance to be running in the pool
+		if len(instancePool.Instances) == 0 {
+			return fmt.Errorf("instance pool created but contains no instances")
+		}
+
+		// Use the first instance in the pool as the primary machine
+		firstInstanceID := instancePool.Instances[0].ID
+		instance, err := client.GetInstance(ctx, firstInstanceID)
+		if err != nil {
+			return err
+		}
+
+		IPAddress := instance.PublicIP.String()
+		if IPAddress != "<nil>" {
+			d.IPAddress = IPAddress
+		}
+		d.ID = instance.ID
+		log.Infof("Instance Pool: %v, Primary Instance: %v, IP Address: %v, SSH User: %v",
+			d.InstancePoolID, d.ID, d.IPAddress, d.GetSSHUsername())
+
+		// Note: Private networks are already attached via instance pool creation
+
+		if instance.Template != nil && instance.Template.PasswordEnabled != nil && *instance.Template.PasswordEnabled {
+			res, err := client.RevealInstancePassword(ctx, instance.ID)
+			if err != nil {
+				return err
+			}
+
+			d.Password = res.Password
+		}
+	} else {
+		// Create single instance (original behavior)
+		encodedUserData := base64.StdEncoding.EncodeToString(d.UserData)
+
+		op, err := client.CreateInstance(ctx, v3.CreateInstanceRequest{
+			Template:           &template,
+			Ipv6Enabled:        v3.Bool(true),
+			DiskSize:           d.DiskSize,
+			InstanceType:       &instType,
+			UserData:           encodedUserData,
+			Name:               d.MachineName,
+			SSHKeys:            []v3.SSHKey{*sshKey},
+			SecurityGroups:     sgs,
+			AntiAffinityGroups: ags,
+		})
+		if err != nil {
+			return err
+		}
+
+		log.Infof("Deploying %s...", d.MachineName)
+
+		res, err := client.Wait(ctx, op, v3.OperationStateSuccess)
+		if err != nil {
+			return err
+		}
+
+		instance, err := client.GetInstance(ctx, res.Reference.ID)
+		if err != nil {
+			return err
+		}
+
+		IPAddress := instance.PublicIP.String()
+		if IPAddress != "<nil>" {
+			d.IPAddress = IPAddress
+		}
+		d.ID = instance.ID
+		log.Infof("IP Address: %v, SSH User: %v", d.IPAddress, d.GetSSHUsername())
+
+		// Attach Private Networks
+		for _, pnet := range pnets {
+			log.Infof("Attaching private network %s to instance %s...", pnet.ID, d.ID)
+			op, err := client.AttachInstanceToPrivateNetwork(ctx, pnet.ID, v3.AttachInstanceToPrivateNetworkRequest{
+				Instance: &v3.AttachInstanceToPrivateNetworkRequestInstance{ID: instance.ID},
+			})
+			if err != nil {
+				log.Errorf("Failed to attach private network %s: %v", pnet.ID, err)
+				return fmt.Errorf("failed to attach private network: %w", err)
+			}
+
+			_, err = client.Wait(ctx, op, v3.OperationStateSuccess)
+			if err != nil {
+				log.Errorf("Failed to wait for private network attachment %s: %v", pnet.ID, err)
+				return fmt.Errorf("failed to attach private network: %w", err)
+			}
+
+			log.Debugf("Successfully attached private network %s", pnet.ID)
+		}
+
+		if instance.Template != nil && instance.Template.PasswordEnabled != nil && *instance.Template.PasswordEnabled {
+			res, err := client.RevealInstancePassword(ctx, instance.ID)
+			if err != nil {
+				return err
+			}
+
+			d.Password = res.Password
+		}
 	}
 
 	// Destroy the SSH key
@@ -1045,8 +1172,22 @@ func (d *Driver) Remove() error {
 		}
 	}
 
-	// Destroy the Instance
-	if d.ID != "" {
+	// Destroy the Instance or Instance Pool
+	if d.UseInstancePool && d.InstancePoolID != "" {
+		// Delete the entire instance pool
+		log.Infof("Deleting instance pool %s...", d.InstancePoolID)
+		op, err := client.DeleteInstancePool(ctx, d.InstancePoolID)
+		if err != nil {
+			return err
+		}
+
+		_, err = client.Wait(ctx, op, v3.OperationStateSuccess)
+		if err != nil {
+			return err
+		}
+		log.Infof("Instance pool %s deleted", d.InstancePoolID)
+	} else if d.ID != "" {
+		// Delete single instance
 		op, err := client.DeleteInstance(ctx, d.ID)
 		if err != nil {
 			return err
