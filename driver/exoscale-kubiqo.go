@@ -774,10 +774,11 @@ func (d *Driver) Create() error {
 		}
 	}
 
-	// Reading the username from the template
-	if template.DefaultUser != "" {
+	// Reading the username from the template (only if user hasn't specified one)
+	if d.SSHUser == "" && template.DefaultUser != "" {
 		d.SSHUser = template.DefaultUser
 	}
+
 	log.Debugf("Image %v(10) = %s (%s)", d.Image, template.ID, d.SSHUser)
 
 	// Profile UUID
@@ -951,9 +952,13 @@ ssh_authorized_keys:
 		}
 	}
 
-	sshKey, err := client.GetSSHKey(ctx, d.KeyPair)
-	if err != nil {
-		return err
+	// Only fetch SSH key from Exoscale if we registered one (not when using custom SSH key)
+	var sshKey *v3.SSHKey
+	if d.KeyPair != "" {
+		sshKey, err = client.GetSSHKey(ctx, d.KeyPair)
+		if err != nil {
+			return err
+		}
 	}
 
 	log.Infof("Spawn exoscale host...")
@@ -1007,17 +1012,24 @@ ssh_authorized_keys:
 		// Create single instance (original behavior)
 		encodedUserData := base64.StdEncoding.EncodeToString(d.UserData)
 
-		op, err := client.CreateInstance(ctx, v3.CreateInstanceRequest{
+		createReq := v3.CreateInstanceRequest{
 			Template:           &template,
 			Ipv6Enabled:        v3.Bool(true),
 			DiskSize:           d.DiskSize,
 			InstanceType:       &instType,
 			UserData:           encodedUserData,
 			Name:               d.MachineName,
-			SSHKeys:            []v3.SSHKey{*sshKey},
 			SecurityGroups:     sgs,
 			AntiAffinityGroups: ags,
-		})
+		}
+
+		// Only add SSH key if we registered one with Exoscale
+		// If using custom SSH key, it's already in cloud-init
+		if sshKey != nil {
+			createReq.SSHKeys = []v3.SSHKey{*sshKey}
+		}
+
+		op, err := client.CreateInstance(ctx, createReq)
 		if err != nil {
 			return err
 		}
@@ -1068,23 +1080,6 @@ ssh_authorized_keys:
 			}
 
 			d.Password = res.Password
-		}
-	}
-
-	// Destroy the SSH key
-	if d.KeyPair != "" {
-		if err := drivers.WaitForSSH(d); err != nil {
-			return err
-		}
-
-		op, err := client.DeleteSSHKey(ctx, d.KeyPair)
-		if err != nil {
-			return err
-		}
-
-		_, err = client.Wait(ctx, op, v3.OperationStateSuccess)
-		if err != nil {
-			return err
 		}
 
 		d.KeyPair = ""

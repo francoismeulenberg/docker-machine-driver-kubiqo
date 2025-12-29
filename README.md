@@ -71,7 +71,7 @@ A customized Exoscale driver for Docker Machine / Rancher Machine, forked from [
 
 - **Original:** Template search filtered to only 10GB images: `if tpl.Size>>30 != 10 { continue }`
 - **Changed:** Filter remains in name-based search but bypassed when using UUID lookup
-- **Reason:** Custom templates (like SLE Micro 6.1 with 32GB disk) would be excluded by this filter
+- **Reason:** Custom templates with different disk sizes would be excluded by this filter
 
 ### 8. Enhanced Debug Logging
 
@@ -228,19 +228,6 @@ docker-machine create -d kubiqo \
 - All instances share the same configuration (template, instance type, networks, security groups)
 - Removing the machine with `docker-machine rm my-cluster` deletes the entire pool
 - Instance pool size can be set via `--kubiqo-instance-pool-size` flag or `EXOSCALE_INSTANCE_POOL_SIZE` environment variable
-
-### For SLE Micro 6.x Images
-
-SLE Micro uses transactional updates and may require custom Docker installation. Options:
-
-1. **Pre-installed Docker image** (recommended):
-
-   ```bash
-   docker-machine create -d kubiqo \
-     --kubiqo-image "<sle-micro-template-uuid>" \
-     --engine-install-url "none" \
-     ...
-   ```
 
 2. **Custom cloud-init** (`userdata.yaml`):
 
